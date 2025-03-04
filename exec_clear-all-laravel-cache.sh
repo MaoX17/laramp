@@ -1,0 +1,1 @@
+docker compose run --rm php php artisan cache:clear;docker compose run --rm php php artisan config:clear;docker compose run --rm php php artisan route:clear;docker compose run --rm php php artisan view:clear;

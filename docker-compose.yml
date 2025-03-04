@@ -1,0 +1,106 @@
+
+services:
+  site:
+    build:
+      context: .
+      dockerfile: nginx.dockerfile
+    container_name: nginx_${PRJ_NAME}.proietti.net
+    # ports:
+    #   - "8080:80"
+    environment:
+      VIRTUAL_HOST: ${VIRTUAL_HOST}
+      VIRTUAL_PORT: ${VIRTUAL_PORT}
+      LETSENCRYPT_HOST: ${LETSENCRYPT_HOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.${TRAEFIK_ROUTE_NAME}-http.entrypoints=web
+      - traefik.http.routers.${TRAEFIK_ROUTE_NAME}-http.rule=Host(`${LETSENCRYPT_HOST}`)
+      - traefik.http.routers.${TRAEFIK_ROUTE_NAME}-http.middlewares=https-redirect@file
+
+      - traefik.http.routers.${TRAEFIK_ROUTE_NAME}-https.entrypoints=websecure
+      - traefik.http.routers.${TRAEFIK_ROUTE_NAME}-https.rule=Host(`${LETSENCRYPT_HOST}`)
+      - traefik.http.routers.${TRAEFIK_ROUTE_NAME}-https.tls=true
+#      - traefik.http.routers.${TRAEFIK_ROUTE_NAME}-https.tls.certresolver=lets-encr
+      - traefik.http.routers.${TRAEFIK_ROUTE_NAME}-https.middlewares=secured@file
+#      - traefik.http.routers.${TRAEFIK_ROUTE_NAME}-https.middlewares=csc-maox-ldapAuth@file
+      - traefik.http.routers.${TRAEFIK_ROUTE_NAME}-https.middlewares=csc-sistema-whitelist@file
+
+      - traefik.http.services.${TRAEFIK_ROUTE_NAME}.loadbalancer.server.port=${VIRTUAL_PORT}
+      - traefik.docker.network=nginx-proxy
+
+
+
+    volumes:
+      - ../src:/var/www/html:delegated
+    depends_on:
+      - php
+      - mysql
+    networks:
+      - backend
+      - proxy
+
+  mysql:
+    image: mariadb
+    container_name: mysql_${PRJ_NAME}.proietti.net
+    hostname: mysql-${PRJ_NAME}
+    restart: unless-stopped
+    tty: true
+#    ports:
+#      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      SERVICE_NAME: ${SERVICE_NAME}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ../mysqldata:/var/lib/mysql
+    networks:
+      - backend
+
+  php:
+    build:
+      context: .
+      dockerfile: php.dockerfile
+    container_name: php_${PRJ_NAME}.proietti.net
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ../src:/var/www/html:delegated
+    # ports:
+    #   - "9000:9000"
+    networks:
+      - backend
+
+
+  redis:
+    image: redis:6
+    container_name: redis_${PRJ_NAME}.proietti.net
+    labels:
+      - traefik.enable=false
+    restart: always
+    sysctls:
+      - net.core.somaxconn=1024
+    volumes:
+      - ./redisdata:/data
+    networks:
+      - backend
+    # launch Redis in cache mode with :
+    #     #  - max memory up to 50% of your RAM if needed (--maxmemory 512mb)
+    #         #  - deleting oldest data when max memory is reached (--maxmemory-policy allkeys-lru)
+#    entrypoint: redis-server --maxmemory 512mb -maxmemory-policy allkeys-lru
+    entrypoint: redis-server /data/redis.conf
+
+
+
+
+networks:
+  proxy:
+    external: true
+    name: nginx-proxy
+  backend:
+    external: false
+    name: backend_${PRJ_NAME}
